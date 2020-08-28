@@ -1,0 +1,9 @@
+{
+    "name": "obs-segmentation",
+    "version": "0.0.1",
+    "dependencies": {
+        "@tensorflow-models/body-pix": "^2.0.5",
+        "@tensorflow/tfjs-node-gpu": "^1.7.1",
+        "opencv": "^7.0.0"
+    }
+}
