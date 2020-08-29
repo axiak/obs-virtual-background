@@ -64,7 +64,7 @@ CUDA_HOME=/usr/local/my-cuda-path ./run.sh
 You'll need to download the OBS-studio source and rever to it when running
 the CMake build. Here's a quick example that assumes you're starting in some parent directory:
 
-```
+```bash
 git clone --recursive https://github.com/obsproject/obs-studio.git
 git clone https://github.com/axiak/obs-virtual-background.git
 
