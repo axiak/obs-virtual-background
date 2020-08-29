@@ -75,3 +75,7 @@ make
 sudo make install
 ```
 
+## Todo
+
+- The node server works fairly well but is in need of a refactor. I plan on extracting the protocol logic from the segmentation logic.
+- I'm on the lookout for a suitable segmentation model in C/C++ to remove the need for the node service entirely.
