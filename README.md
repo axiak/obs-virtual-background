@@ -5,6 +5,8 @@ A virtual background for OBS which uses google's bodyPix to
 apply a live mask to a video feed.
 
 
+![](https://github.com/axiak/obs-virtual-background/raw/master/img/screencast.gif)
+
 ## Installation
 
 There are two components to setting this up
