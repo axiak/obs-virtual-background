@@ -2,7 +2,6 @@ const tf = require('@tensorflow/tfjs-node-gpu');
 const bodyPix = require('@tensorflow-models/body-pix');
 const net = require('net');
 const fs = require('fs');
-const util = require('util');
 const process = require('process');
 const cv = require('opencv');
 
@@ -30,6 +29,25 @@ const writePromise = (socket, data) => {
 }
 
 
+const timer = (name, func) => {
+    const hrstart = process.hrtime();
+    const result = func();
+    const hrend = process.hrtime(hrstart);
+    if (CONFIG.debugTimings) {
+        console.info(` !! Timing: ${name}: ${hrend[0]}s ${hrstart[1]}ns`);
+    }
+    return result;
+};
+
+const timeit = (name, hrstart) => {
+    const hrend = process.hrtime(hrstart);
+    if (CONFIG.debugTimings) {
+        console.info(` !! Timing: ${name} ${hrend[0]}s ${hrend[1]/1000}us`);
+    }
+    return process.hrtime();
+};
+
+
 (function () {
     function getRandomPort() {
         return Math.floor(Math.random() * (32767 - 1024) + 1024);
@@ -42,9 +60,9 @@ const writePromise = (socket, data) => {
     }
 
     async function handleConnection(nn, socket) {
+        console.log("!! Got new connection");
         let running = true;
         socket.setTimeout(1);
-        console.info("Got a new connection.");
         socket.on('end', () => {
             running = false;
         });
@@ -56,30 +74,38 @@ const writePromise = (socket, data) => {
         let holderWidth = 0;
         let cvImageHolder = null;
         let maskImageHolder = null;
-
         while (running) {
             const chunks = [];
-            let request_size = -1;
             let offset = 0;
-            let current_total_size = 0;
-            let request_header = null;
-            while (true) {
+            let currentTotalSize = 0;
+
+            let start = process.hrtime();
+
+            while (currentTotalSize < 12) {
                 const buf = await socketDataPromise(socket);
-                if (request_size === -1) {
-                    request_size = buf.readUInt32LE();
-                    offset += 4;
-                }
-                current_total_size += buf.length;
                 chunks.push(buf);
-                if (current_total_size >= request_size) {
-                    break;
-                }
+                currentTotalSize += buf.length;
+            }
+            const currentBuffer = (chunks.length === 1) ? chunks[0] : Buffer.concat(chunks);
+            const requestHeader = currentBuffer.subarray(0, 8);
+
+            if (!requestHeader.equals(REQUEST_HEADER)) {
+                socket.destroy();
             }
             
-            const requestBuffer = Buffer.concat(chunks);
-            
-            request_header = requestBuffer.subarray(offset, offset + 8);
             offset += 8;
+            const requestSize = currentBuffer.readInt32LE(offset);
+            offset += 4;
+
+            while (currentTotalSize < requestSize) {
+                const buf = await socketDataPromise(socket);
+                chunks.push(buf);
+                currentTotalSize += buf.length;
+            }
+
+            const requestBuffer = Buffer.concat(chunks);
+
+            start = timeit("loaded buffer", start);
         
             const segmentationThreshold = requestBuffer.readFloatLE(offset);
             offset += 4;
@@ -103,14 +129,21 @@ const writePromise = (socket, data) => {
                 holderWidth = width;
             }
             cvImageHolder.put(requestBuffer.subarray(offset));
+            cvImageHolder.save("/tmp/x.png");
+            start = timeit("added data to image holder", start);
+
             const image = tf.node.decodeImage(cvImageHolder.toBuffer({ext: ".bmp"}));
+            start = timeit("tf decoded image", start);
             if (image === null) {
+                await writePromise(socket, RESPONSE_HEADER);
                 await writePromise(socket, getIntBuffer(-1));
             }
             const options = CONFIG.segmentationOptions;
             options.segmentationThreshold = segmentationThreshold;
             const segmentation = await nn.segmentPerson(image, options);
             maskImageHolder.put(Buffer.from(segmentation.data));
+
+            start = timeit("finished segmentation", start);
             
             const invertedMask = maskImageHolder.threshold(0, 255, "Binary");
             if (growshrink > 0) {
@@ -122,10 +155,13 @@ const writePromise = (socket, data) => {
                 const adjusted = 2 * blur + 1;
                 invertedMask.gaussianBlur([adjusted, adjusted]);
             }
+
+            start = timeit("completed post processing", start);
+
             const resultBuffer = invertedMask.getData();
             invertedMask.release();
-            await writePromise(socket, getIntBuffer(resultBuffer.length));
             await writePromise(socket, RESPONSE_HEADER);
+            await writePromise(socket, getIntBuffer(resultBuffer.length));
             await writePromise(socket, resultBuffer);
             tf.dispose(image);
         }

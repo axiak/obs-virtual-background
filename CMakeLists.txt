@@ -16,7 +16,7 @@ find_package(FFmpeg REQUIRED
 
 set(virtualoutput_SOURCES
 		src/virtual-background.c
-		src/conversions.c src/conversions.h src/segmentation_client.c)
+		src/segmentation_client.c src/segmentation_client.h src/virtual-background.h src/scale.h src/scale.c)
 
 add_library(virtual-background MODULE
 	${virtualoutput_SOURCES}

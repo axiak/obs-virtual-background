@@ -5,10 +5,11 @@ module.exports = {
         segmentationThreshold: 0.7,
     },
     modelOptions: {
-        //architecture: 'MobileNetV1',
-        architecture: 'ResNet50',
+        architecture: 'MobileNetV1',
+        //architecture: 'ResNet50',
         outputStride: 16,    
-        multiplier: 1,
+        multiplier: 0.75,
         quantBytes: 2,
-    }
+    },
+    debugTimings: false
 };
