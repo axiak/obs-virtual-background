@@ -7,6 +7,8 @@ apply a live mask to a video feed.
 
 ## Installation
 
+There are two components to setting this up
+
 - Get obs-studio source code
 
 ```
