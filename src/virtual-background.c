@@ -8,7 +8,6 @@
 
 extern int errno ;
 
-#include "segmentation_client.h"
 #include "virtual-background.h"
 
 /* clang-format off */
@@ -41,7 +40,7 @@ static void virtual_background_update(void *data, obs_data_t *settings)
     int growshrink = (int)obs_data_get_int(settings, SETTING_GROWSHRINK);
     float segmentation_threshold = (float)obs_data_get_double(settings, SETTING_SEGMENTATION_THRESHOLD);
 
-    SegmentationClient_set_parameters(filter->client, segmentation_threshold, blur, growshrink);
+    SegmentationThread_set_parameters(filter->thread, segmentation_threshold, blur, growshrink);
 
     obs_enter_graphics();
 
@@ -77,9 +76,9 @@ static void *virtual_background_create(obs_data_t *settings, obs_source_t *conte
     struct virtual_background_data *filter =
             bzalloc(sizeof(struct virtual_background_data));
     filter->context = context;
-    filter->client = SegmentationClient_create();
+    filter->thread = SegmentationThread_create();
     filter->scaler = ImageScaler_create();
-
+    filter->mask = ImgArray_create();
     obs_source_update(context, settings);
     return filter;
 }
@@ -93,7 +92,8 @@ static void virtual_background_destroy(void *data)
     gs_texture_destroy(filter->target);
     obs_leave_graphics();
     ImageScaler_destroy(filter->scaler);
-    SegmentationClient_destroy(filter->client);
+    SegmentationThread_destroy(filter->thread);
+    ImgArray_destroy(filter->mask);
     bfree(filter);
 }
 
@@ -108,21 +108,20 @@ static void virtual_background_tick(void *data, float seconds)
 
     int height = ImageScaler_get_new_height(filter->scaler);
     int width = ImageScaler_get_new_width(filter->scaler);
-    int total_size = ImageScaler_get_buffer_size(filter->scaler);
 
-    SegmentationClient_set_dimensions(filter->client, height, width);
-
-    int rc = SegmentationClient_run_segmentation(filter->client, filter->last_frame_timestamp, last_frame, total_size);
+    SegmentationThread_set_dimensions(filter->thread, height, width);
+    int rc = SegmentationThread_get_mask(filter->thread, filter->mask);
     if (rc != 0) {
         return;
     }
 
-    const uint8_t * mask = SegmentationClient_get_mask(filter->client);
-    if (SegmentationClient_get_mask_size(filter->client) != width * height) {
-        fprintf(stderr, "Invalid mask size from server: %d. expected %d\n",
-                SegmentationClient_get_mask_size(filter->client), width * height);
+    if (ImgArray_get_size(filter->mask) != width * height) {
+        fprintf(stderr, "Invalid mask size from server: %zu. expected %d\n",
+                ImgArray_get_size(filter->mask), width * height);
         return;
     }
+
+    uint8_t * mask = ImgArray_get_buffer(filter->mask);
 
     obs_enter_graphics();
     if (filter->target == NULL || filter->target_height != height || filter->target_width != width) {
@@ -172,6 +171,12 @@ virtual_background_filter_video(void *data, struct obs_source_frame *frame)
     struct virtual_background_data *filter = data;
     filter->last_frame_timestamp = frame->timestamp;
     ImageScaler_scale_image(filter->scaler, frame);
+    SegmentationThread_update_buffer(
+            filter->thread,
+            frame->timestamp,
+            ImageScaler_get_buffer(filter->scaler),
+            ImageScaler_get_buffer_size(filter->scaler)
+    );
     return frame;
 }
 

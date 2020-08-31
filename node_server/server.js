@@ -12,6 +12,7 @@ const outputFile = `${process.env.TMPDIR || "/tmp"}/.segmentation.port`;
 
 const REQUEST_HEADER = Buffer.from([0xee, 0x61, 0xbe, 0xc4, 0x38, 0xd2, 0x56, 0xa9]);
 const RESPONSE_HEADER = Buffer.from([0x50, 0x77, 0x3d, 0xda, 0xc8, 0x7d, 0x5d, 0x97]);
+let NUM_FRAMES = 0;
 
 
 const socketDataPromise = (socket) => {
@@ -39,9 +40,9 @@ const timer = (name, func) => {
     return result;
 };
 
-const timeit = (name, hrstart) => {
+const timeit = (name, hrstart, debug) => {
     const hrend = process.hrtime(hrstart);
-    if (CONFIG.debugTimings) {
+    if (debug || CONFIG.debugTimings) {
         console.info(` !! Timing: ${name} ${hrend[0]}s ${hrend[1]/1000}us`);
     }
     return process.hrtime();
@@ -75,11 +76,16 @@ const timeit = (name, hrstart) => {
         let cvImageHolder = null;
         let maskImageHolder = null;
         while (running) {
+            NUM_FRAMES++;
+            if (NUM_FRAMES > 250) {
+                process.exit(0);
+            }
             const chunks = [];
             let offset = 0;
             let currentTotalSize = 0;
 
             let start = process.hrtime();
+            const requestStart = process.hrtime();
 
             while (currentTotalSize < 12) {
                 const buf = await socketDataPromise(socket);
@@ -129,7 +135,6 @@ const timeit = (name, hrstart) => {
                 holderWidth = width;
             }
             cvImageHolder.put(requestBuffer.subarray(offset));
-            cvImageHolder.save("/tmp/x.png");
             start = timeit("added data to image holder", start);
 
             const image = tf.node.decodeImage(cvImageHolder.toBuffer({ext: ".bmp"}));
@@ -141,6 +146,7 @@ const timeit = (name, hrstart) => {
             const options = CONFIG.segmentationOptions;
             options.segmentationThreshold = segmentationThreshold;
             const segmentation = await nn.segmentPerson(image, options);
+            tf.dispose(image);
             maskImageHolder.put(Buffer.from(segmentation.data));
 
             start = timeit("finished segmentation", start);
@@ -163,7 +169,7 @@ const timeit = (name, hrstart) => {
             await writePromise(socket, RESPONSE_HEADER);
             await writePromise(socket, getIntBuffer(resultBuffer.length));
             await writePromise(socket, resultBuffer);
-            tf.dispose(image);
+            timeit(`Response time ${NUM_FRAMES}`, requestStart, true);
         }
         if (cvImageHolder !== null) {
             cvImageHolder.release();

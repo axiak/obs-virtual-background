@@ -7,7 +7,8 @@
 
 #include <obs-module.h>
 #include "scale.h"
-#include "segmentation_client.h"
+#include "segmentation_thread.h"
+#include "imgarray.h"
 
 struct virtual_background_data {
     uint64_t last_frame_timestamp;
@@ -15,11 +16,13 @@ struct virtual_background_data {
     obs_source_t *context;
     gs_effect_t *effect;
 
+    ImgArray *mask;
+
     gs_texture_t *target;
     int target_height;
     int target_width;
 
-    SegmentationClient  *client;
+    SegmentationThread *thread;
     ImageScaler *scaler;
 };
 
