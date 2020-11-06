@@ -77,7 +77,7 @@ const timeit = (name, hrstart, debug) => {
         let maskImageHolder = null;
         while (running) {
             NUM_FRAMES++;
-            if (NUM_FRAMES > 250) {
+            if (NUM_FRAMES > 750) {
                 process.exit(0);
             }
             const chunks = [];
